@@ -56,7 +56,7 @@ responseTimeDistribution hist application request respond =
     stop t1 = do
         t2 <- getCurrentTime
         let dt = diffUTCTime t2 t1
-        observe (fromRational $ toRational dt) hist
+        observe (fromRational $ (*1000) $ toRational dt) hist
 
 data Meters = Meters
     { metersInflight :: Metric Gauge
@@ -87,7 +87,7 @@ monitorEndpoints proxy meters application = \request respond -> do
             metersC5XX     <- registerIO . counter $ info prefix  "responses.5XX" "Number of 5XX requests for "
             metersCXXX     <- registerIO . counter $ info prefix  "responses.XXX" "Number of XXX requests for "
             metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
-                                                    $ [0.01,0.05,0.1,0.25,0.5,0.75,1,1.5,2,3,5,10,20,30,60]
+                                                    $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
             let m = Meters{..}
             return (H.insert path m ms, m)
         Just m -> return (ms,m)
