@@ -81,13 +81,13 @@ monitorEndpoints proxy meters application = \request respond -> do
             let prefix = "servant.path." <> path <> "."
                 info :: Text -> Text -> Text -> Info
                 info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
-            metersInflight <- gauge $ info prefix  "in_flight" "Number of in flight requests for "
-            metersC2XX <- counter $ info prefix  "responses.2XX" "Number of 2XX requests for "
-            metersC4XX <- counter $ info prefix  "responses.4XX" "Number of 4XX requests for "
-            metersC5XX <- counter $ info prefix  "responses.5XX" "Number of 5XX requests for "
-            metersCXXX <- counter $ info prefix  "responses.XXX" "Number of XXX requests for "
-            metersTime <- histogram (info prefix "time_ms" "Distribution of query times for ")
-                                    [0.01,0.05,0.1,0.25,0.5,0.75,1,1.5,2,3,5,10,20,30,60]
+            metersInflight <- registerIO . gauge $ info prefix  "in_flight" "Number of in flight requests for "
+            metersC2XX     <- registerIO . counter $ info prefix  "responses.2XX" "Number of 2XX requests for "
+            metersC4XX     <- registerIO . counter $ info prefix  "responses.4XX" "Number of 4XX requests for "
+            metersC5XX     <- registerIO . counter $ info prefix  "responses.5XX" "Number of 5XX requests for "
+            metersCXXX     <- registerIO . counter $ info prefix  "responses.XXX" "Number of XXX requests for "
+            metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
+                                                    $ [0.01,0.05,0.1,0.25,0.5,0.75,1,1.5,2,3,5,10,20,30,60]
             let m = Meters{..}
             return (H.insert path m ms, m)
         Just m -> return (ms,m)
