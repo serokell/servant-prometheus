@@ -1,25 +1,25 @@
-name:                servant-ekg
-version:             0.2.0.0
-synopsis:            Helpers for using ekg with servant
-description:         Helpers for using ekg with servant
+name:                servant-prometheus
+version:             0.1.0.0
+synopsis:            Helpers for using prometheus with servant
+description:         Helpers for using prometheus with servant. Each endpoint has its own metrics allowing more detailed monitoring than wai-middleware-prometheus allows
 license:             BSD3
 license-file:        LICENSE
 author:              Anchor Engineering <engineering@lists.anchor.net.au>, Servant Contributors
-maintainer:          Servant Contributors <haskell-servant-maintainers@googlegroups.com>
+maintainer:          Alex Mason <axman6@gmail.com>
 category:            System
 build-type:          Simple
 cabal-version:       >=1.10
 
 source-repository HEAD
   type: git
-  location: https://github.com/haskell-servant/servant-ekg.git
+  location: https://github.com/axman6/servant-prometheus
 
 library
-  exposed-modules:     Servant.Ekg
+  exposed-modules:     Servant.Prometheus
   hs-source-dirs:      lib
   build-depends:       base >=4.7 && < 4.10
-                     , ekg-core
-                     , servant > 0.5 && < 0.10
+                     , prometheus-client
+                     , servant > 0.10 && < 0.12
                      , http-types
                      , text
                      , time
@@ -35,12 +35,11 @@ test-suite spec
   main-is: Spec.hs
   build-depends:      base == 4.*
                     , aeson
-                    , ekg
-                    , ekg-core
-                    , servant-ekg
+                    , servant-prometheus
                     , servant-server
                     , servant-client
                     , servant
+                    , prometheus-client
                     , http-client
                     , text
                     , wai
@@ -56,9 +55,7 @@ executable bench
   default-language: Haskell2010
   build-depends:      base == 4.*
                     , aeson
-                    , ekg
-                    , ekg-core
-                    , servant-ekg
+                    , servant-prometheus
                     , servant-server
                     , text
                     , wai
