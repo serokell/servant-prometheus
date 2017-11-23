@@ -37,17 +37,17 @@ gaugeInflight inflight application request respond =
 
 -- | Count responses with 2XX, 4XX, 5XX, and XXX response codes.
 countResponseCodes
-    :: (Metric Counter, Metric Counter, Metric Counter, Metric Counter)
+    :: Metric (Vector Label1 Counter)
     -> Middleware
-countResponseCodes (c2XX, c4XX, c5XX, cXXX) application request respond =
+countResponseCodes codes application request respond =
     application request respond'
   where
     respond' res = count (responseStatus res) >> respond res
     count Status{statusCode = sc }
-        | 200 <= sc && sc < 300 = incCounter c2XX
-        | 400 <= sc && sc < 500 = incCounter c4XX
-        | 500 <= sc && sc < 600 = incCounter c5XX
-        | otherwise             = incCounter cXXX
+        | 200 <= sc && sc < 300 = withLabel "2XX" incCounter codes
+        | 400 <= sc && sc < 500 = withLabel "3XX" incCounter codes
+        | 500 <= sc && sc < 600 = withLabel "4XX" incCounter codes
+        | otherwise             = withLabel "XXX" incCounter codes
 
 responseTimeDistribution :: Metric Histogram -> Metric Summary -> Middleware
 responseTimeDistribution hist qant application request respond =
@@ -61,13 +61,10 @@ responseTimeDistribution hist qant application request respond =
         observe t qant
 
 data Meters = Meters
-    { metersInflight :: Metric Gauge
-    , metersC2XX     :: Metric Counter
-    , metersC4XX     :: Metric Counter
-    , metersC5XX     :: Metric Counter
-    , metersCXXX     :: Metric Counter
-    , metersTime     :: Metric Histogram
-    , metersTimeQant :: Metric Summary
+    { metersInflight  :: Metric Gauge
+    , metersResponses :: Metric (Vector Label1 Counter)
+    , metersTime      :: Metric Histogram
+    , metersTimeQant  :: Metric Summary
     }
 
 monitorEndpoints
@@ -85,10 +82,7 @@ monitorEndpoints proxy meters application = \request respond -> do
                 info :: Text -> Text -> Text -> Info
                 info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
             metersInflight <- registerIO . gauge $ info prefix  "in_flight" "Number of in flight requests for "
-            metersC2XX     <- registerIO . counter $ info prefix  "responses.2XX" "Number of 2XX requests for "
-            metersC4XX     <- registerIO . counter $ info prefix  "responses.4XX" "Number of 4XX requests for "
-            metersC5XX     <- registerIO . counter $ info prefix  "responses.5XX" "Number of 5XX requests for "
-            metersCXXX     <- registerIO . counter $ info prefix  "responses.XXX" "Number of XXX requests for "
+            metersResponses <- registerIO . vector "status_code" $ counter (Info "http_requests" "Counters for status codes")
             metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
                                             $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
             metersTimeQant <- registerIO . summary (info prefix "time_ms" "Summary of query times for ") $ defaultQuantiles
@@ -97,7 +91,7 @@ monitorEndpoints proxy meters application = \request respond -> do
         Just m -> return (ms,m)
     let application' =
             responseTimeDistribution metersTime metersTimeQant .
-            countResponseCodes (metersC2XX, metersC4XX, metersC5XX, metersCXXX) .
+            countResponseCodes metersResponses .
             gaugeInflight metersInflight $
             application
     application' request respond
