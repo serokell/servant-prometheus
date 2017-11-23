@@ -45,8 +45,8 @@ countResponseCodes codes application request respond =
     respond' res = count (responseStatus res) >> respond res
     count Status{statusCode = sc }
         | 200 <= sc && sc < 300 = withLabel "2XX" incCounter codes
-        | 400 <= sc && sc < 500 = withLabel "3XX" incCounter codes
-        | 500 <= sc && sc < 600 = withLabel "4XX" incCounter codes
+        | 400 <= sc && sc < 500 = withLabel "4XX" incCounter codes
+        | 500 <= sc && sc < 600 = withLabel "5XX" incCounter codes
         | otherwise             = withLabel "XXX" incCounter codes
 
 responseTimeDistribution :: Metric Histogram -> Metric Summary -> Middleware
@@ -84,8 +84,8 @@ monitorEndpoints proxy meters application = \request respond -> do
             metersInflight <- registerIO . gauge $ info prefix  "in_flight" "Number of in flight requests for "
             metersResponses <- registerIO . vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
             withLabel "2XX" (unsafeAddCounter 0) metersResponses
-            withLabel "3XX" (unsafeAddCounter 0) metersResponses
             withLabel "4XX" (unsafeAddCounter 0) metersResponses
+            withLabel "5XX" (unsafeAddCounter 0) metersResponses
             withLabel "XXX" (unsafeAddCounter 0) metersResponses
             metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
                                             $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
