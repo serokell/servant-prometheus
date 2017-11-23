@@ -49,14 +49,16 @@ countResponseCodes (c2XX, c4XX, c5XX, cXXX) application request respond =
         | 500 <= sc && sc < 600 = incCounter c5XX
         | otherwise             = incCounter cXXX
 
-responseTimeDistribution :: Metric Histogram -> Middleware
-responseTimeDistribution hist application request respond =
+responseTimeDistribution :: Metric Histogram -> Metric Summary -> Middleware
+responseTimeDistribution hist qant application request respond =
     bracket getCurrentTime stop $ const $ application request respond
   where
     stop t1 = do
         t2 <- getCurrentTime
         let dt = diffUTCTime t2 t1
-        observe (fromRational $ (*1000) $ toRational dt) hist
+            t = fromRational $ (*1000) $ toRational dt
+        observe t hist
+        observe t qant
 
 data Meters = Meters
     { metersInflight :: Metric Gauge
@@ -65,6 +67,7 @@ data Meters = Meters
     , metersC5XX     :: Metric Counter
     , metersCXXX     :: Metric Counter
     , metersTime     :: Metric Histogram
+    , metersTimeQant :: Metric Summary
     }
 
 monitorEndpoints
@@ -87,12 +90,13 @@ monitorEndpoints proxy meters application = \request respond -> do
             metersC5XX     <- registerIO . counter $ info prefix  "responses.5XX" "Number of 5XX requests for "
             metersCXXX     <- registerIO . counter $ info prefix  "responses.XXX" "Number of XXX requests for "
             metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
-                                                    $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
+                                            $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
+            metersTimeQant <- registerIO . summary (info prefix "time_ms" "Summary of query times for ") $ defaultQuantiles
             let m = Meters{..}
             return (H.insert path m ms, m)
         Just m -> return (ms,m)
     let application' =
-            responseTimeDistribution metersTime .
+            responseTimeDistribution metersTime metersTimeQant .
             countResponseCodes (metersC2XX, metersC4XX, metersC5XX, metersCXXX) .
             gaugeInflight metersInflight $
             application
