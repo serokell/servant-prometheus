@@ -56,7 +56,7 @@ responseTimeDistribution hist application request respond =
     stop t1 = do
         t2 <- getCurrentTime
         let dt = diffUTCTime t2 t1
-        observe (fromRational $ (*1000) $ toRational dt) hist
+        observe (fromRational $ toRational dt) hist
 
 data Meters = Meters
     { metersInflight :: Metric Gauge
