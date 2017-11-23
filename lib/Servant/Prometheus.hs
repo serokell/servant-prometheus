@@ -82,7 +82,7 @@ monitorEndpoints proxy meters application = \request respond -> do
                 info :: Text -> Text -> Text -> Info
                 info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
             metersInflight <- registerIO . gauge $ info prefix  "in_flight" "Number of in flight requests for "
-            metersResponses <- registerIO . vector "status_code" $ counter (Info "http_requests" "Counters for status codes")
+            metersResponses <- registerIO . vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
             withLabel "2XX" (unsafeAddCounter 0) metersResponses
             withLabel "3XX" (unsafeAddCounter 0) metersResponses
             withLabel "4XX" (unsafeAddCounter 0) metersResponses
