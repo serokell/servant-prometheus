@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeOperators     #-}
 module Main (main) where
 
-import           Control.Concurrent
+import           Data.IORef
 import           Data.Text                (Text)
 import           Network.Wai              (Application)
 import           Network.Wai.Handler.Warp
@@ -23,10 +23,10 @@ benchApi = Proxy
 server :: Server BenchApi
 server = return
 
-servantPrometheusServer :: IO Application
-servantPrometheusServer = do
-  ms <- newMVar mempty
-  return $ monitorEndpoints benchApi ms (serve benchApi server)
+servantPrometheusServer :: MeasureQantiles -> IO Application
+servantPrometheusServer qants = do
+  ms <- newIORef mempty
+  return $ monitorEndpoints benchApi qants ms (serve benchApi server)
 
 benchApp :: IO Application -> IO ()
 benchApp app = withApplication app $ \port ->
@@ -34,7 +34,10 @@ benchApp app = withApplication app $ \port ->
 
 main :: IO ()
 main = do
-  putStrLn "Benchmarking servant-prometheus"
-  benchApp servantPrometheusServer
+  putStrLn "Using IORefs"
+  putStrLn "Benchmarking servant-prometheus (no qantiles)"
+  benchApp (servantPrometheusServer NoQantiles)
+  putStrLn "Benchmarking servant-prometheus (with qantiles)"
+  benchApp (servantPrometheusServer WithQantiles)
   putStrLn "Benchmarking without servant-prometheus"
   benchApp . return $ serve benchApi server

@@ -10,23 +10,22 @@
 {-# LANGUAGE TypeOperators       #-}
 module Servant.Prometheus where
 
-import           Control.Concurrent.MVar
 import           Control.Exception
 import           Control.Monad
-import qualified Data.HashMap.Strict     as H
+import qualified Data.HashMap.Strict as H
+import           Data.IORef
 import           Data.Monoid
 import           Data.Proxy
-import           Data.Text               (Text)
-import qualified Data.Text               as T
-import qualified Data.Text.Encoding      as T
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Encoding  as T
 import           Data.Time.Clock
 import           GHC.TypeLits
-import           Network.HTTP.Types      (Method, Status (..))
+import           Network.HTTP.Types  (Method, Status (..))
 import           Network.Wai
 import           Servant.API
 
-
-import           Prometheus              as Prom
+import           Prometheus          as Prom
 
 
 gaugeInflight :: Metric Gauge -> Middleware
@@ -49,8 +48,8 @@ countResponseCodes codes application request respond =
         | 500 <= sc && sc < 600 = withLabel "5XX" incCounter codes
         | otherwise             = withLabel "XXX" incCounter codes
 
-responseTimeDistribution :: Metric Histogram -> Metric Summary -> Middleware
-responseTimeDistribution hist qant application request respond =
+responseTimeDistribution :: MeasureQantiles -> Metric Histogram -> Metric Summary -> Middleware
+responseTimeDistribution qants hist qant application request respond =
     bracket getCurrentTime stop $ const $ application request respond
   where
     stop t1 = do
@@ -58,7 +57,9 @@ responseTimeDistribution hist qant application request respond =
         let dt = diffUTCTime t2 t1
             t = fromRational $ (*1000) $ toRational dt
         observe t hist
-        observe t qant
+        case qants of
+            WithQantiles -> observe t qant
+            NoQantiles   -> pure ()
 
 data Meters = Meters
     { metersInflight  :: Metric Gauge
@@ -67,34 +68,51 @@ data Meters = Meters
     , metersTimeQant  :: Metric Summary
     }
 
+-- | Measuring qantiles can add significant overgead to your application if your
+-- requests are often small. You should benchmark your app with and without
+-- qantiles to decide if the overhead is acceptable for you application.
+data MeasureQantiles = WithQantiles | NoQantiles deriving (Show, Eq)
+
 monitorEndpoints
     :: HasEndpoint api
     => Proxy api
-    -> MVar (H.HashMap Text Meters)
+    -> MeasureQantiles
+    -> IORef (H.HashMap Text Meters)
     -> Middleware
-monitorEndpoints proxy meters application = \request respond -> do
+monitorEndpoints proxy qants meters application = \request respond -> do
     let path = case getEndpoint proxy request of
             Nothing -> "unknown"
             Just (ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method]
-    Meters{..} <- modifyMVar meters $ \ms -> case H.lookup path ms of
-        Nothing -> do
-            let prefix = "servant.path." <> path <> "."
-                info :: Text -> Text -> Text -> Info
-                info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
-            metersInflight <- registerIO . gauge $ info prefix  "in_flight" "Number of in flight requests for "
-            metersResponses <- registerIO . vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
-            withLabel "2XX" (unsafeAddCounter 0) metersResponses
-            withLabel "4XX" (unsafeAddCounter 0) metersResponses
-            withLabel "5XX" (unsafeAddCounter 0) metersResponses
-            withLabel "XXX" (unsafeAddCounter 0) metersResponses
-            metersTime     <- registerIO . histogram (info prefix "time_ms" "Distribution of query times for ")
-                                            $ [1,5,10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
-            metersTimeQant <- registerIO . summary (info prefix "time_ms" "Summary of query times for ") $ defaultQuantiles
-            let m = Meters{..}
-            return (H.insert path m ms, m)
-        Just m -> return (ms,m)
+    Meters{..} <- do
+        ms <- readIORef meters
+        case H.lookup path ms of
+            Just m -> pure m
+            Nothing -> do
+                let prefix = "servant.path." <> path <> "."
+                    info :: Text -> Text -> Text -> Info
+                    info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
+                metersInflight <- gauge $ info prefix  "in_flight" "Number of in flight requests for "
+                metersResponses <- vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
+                metersTime     <- histogram (info prefix "time_ms" "Distribution of query times for ")
+                                            [10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
+                metersTimeQant <- summary (info prefix "time_ms" "Summary of query times for ") defaultQuantiles
+                let m = Meters{..}
+                (ms,exists) <- atomicModifyIORef' meters $ \ms ->
+                    case H.lookup path ms of
+                        Nothing -> (H.insert path m ms,(m,False))
+                        Just m' -> (ms                ,(m',True))
+                if exists then pure ms
+                else do
+                   register metersInflight
+                   register metersResponses
+                   register metersTime
+                   case qants of
+                    NoQantiles   -> pure metersTimeQant
+                    WithQantiles -> register metersTimeQant
+                   pure ms
+
     let application' =
-            responseTimeDistribution metersTime metersTimeQant .
+            responseTimeDistribution qants metersTime metersTimeQant .
             countResponseCodes metersResponses .
             gaugeInflight metersInflight $
             application
