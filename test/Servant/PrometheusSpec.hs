@@ -7,13 +7,13 @@
 
 module Servant.PrometheusSpec (spec) where
 
-import           Control.Concurrent
-
 import           Data.Aeson
 import qualified Data.HashMap.Strict                        as H
+import           Data.List                                  (sort)
 import           Data.Monoid
 import           Data.Proxy
-import           Data.Text
+import           Data.Text                                  as T
+import qualified Data.Text.Encoding                         as T
 import           GHC.Generics
 import           Network.HTTP.Client                        (defaultManagerSettings,
                                                              newManager)
@@ -24,7 +24,8 @@ import           Servant.API.Internal.Test.ComprehensiveAPI (comprehensiveAPI)
 import           Servant.Client
 import           Test.Hspec
 
-import           Prometheus                                 (getCounter)
+import           Prometheus                                 (getCounter,
+                                                             getVectorWith)
 import           Servant.Prometheus
 
 
@@ -34,26 +35,40 @@ spec :: Spec
 spec = describe "servant-prometheus" $ do
 
   let getEp :<|> postEp :<|> deleteEp = client testApi
+  let t q = describe (show q) $ do
+        it "collects number of request" $
+          withApp q $ \port m -> do
+            mgr <- newManager defaultManagerSettings
+            let runFn :: ClientM a -> IO (Either ServantError a)
+                runFn fn = runClientM fn $ ClientEnv mgr (BaseUrl Http "localhost" port "")
+            _ <- runFn $ getEp "name" Nothing
+            _ <- runFn $ postEp (Greet "hi")
+            _ <- runFn $ deleteEp "blah"
+            case H.lookup "hello.:name.GET" m of
+              Nothing -> fail "Expected some value"
+              Just v -> do
+                r <- getVectorWith getCounter (metersResponses v)
+                Prelude.lookup "2XX" r `shouldBe` Just 1.0
+            case H.lookup "greet.POST" m of
+              Nothing -> fail "Expected some value"
+              Just v  -> do
+                r <- getVectorWith getCounter (metersResponses v)
+                Prelude.lookup "2XX" r `shouldBe` Just 1.0
+            case H.lookup "greet.:greetid.DELETE" m of
+              Nothing -> fail "Expected some value"
+              Just v  -> do
+                r <- getVectorWith getCounter (metersResponses v)
+                Prelude.lookup "2XX" r `shouldBe` Just 1.0
+        it "has all endpoints" $
+          withApp q $ \_ m ->
+            sort (H.keys m) `shouldBe` sort ("unknown":Prelude.map
+                                                (\(ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method])
+                                                (getEndpoints testApi))
+        -- TODO: Figure out how to test quantiles are being made with WithQuantiles
 
-  it "collects number of request" $
-    withApp $ \port mvar -> do
-      mgr <- newManager defaultManagerSettings
-      let runFn :: ClientM a -> IO (Either ServantError a)
-          runFn fn = runClientM fn $ ClientEnv mgr (BaseUrl Http "localhost" port "")
-      _ <- runFn $ getEp "name" Nothing
-      _ <- runFn $ postEp (Greet "hi")
-      _ <- runFn $ deleteEp "blah"
-      m <- readMVar mvar
-      case H.lookup "hello.:name.GET" m of
-        Nothing -> fail "Expected some value"
-        Just v  -> getCounter (metersC2XX v) `shouldReturn` 1
-      case H.lookup "greet.POST" m of
-        Nothing -> fail "Expected some value"
-        Just v  -> getCounter (metersC2XX v) `shouldReturn` 1
-      case H.lookup "greet.:greetid.DELETE" m of
-        Nothing -> fail "Expected some value"
-        Just v  -> getCounter (metersC2XX v) `shouldReturn` 1
 
+  t NoQuantiles
+  t WithQuantiles
   it "is comprehensive" $ do
     let _typeLevelTest = monitorEndpoints comprehensiveAPI undefined undefined undefined
     True `shouldBe` True
@@ -106,7 +121,7 @@ server = helloH :<|> postGreetH :<|> deleteGreetH
 test :: Application
 test = serve testApi server
 
-withApp :: (Port -> MVar (H.HashMap Text Meters) -> IO a) -> IO a
-withApp a = do
-  ms <- newMVar mempty
+withApp :: MeasureQuantiles -> (Port -> H.HashMap Text Meters -> IO a) -> IO a
+withApp qs a = do
+  ms <- makeMeters testApi qs
   withApplication (return $ monitorEndpoints testApi ms test) $ \p -> a p ms
