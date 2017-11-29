@@ -70,7 +70,7 @@ spec = describe "servant-prometheus" $ do
   t NoQuantiles
   t WithQuantiles
   it "is comprehensive" $ do
-    let _typeLevelTest = monitorEndpoints comprehensiveAPI undefined undefined undefined
+    let _typeLevelTest = monitorServant comprehensiveAPI undefined undefined undefined
     True `shouldBe` True
 
 
@@ -124,4 +124,4 @@ test = serve testApi server
 withApp :: MeasureQuantiles -> (Port -> H.HashMap Text Meters -> IO a) -> IO a
 withApp qs a = do
   ms <- makeMeters testApi qs
-  withApplication (return $ monitorEndpoints testApi ms test) $ \p -> a p ms
+  withApplication (return $ monitorServant testApi ms test) $ \p -> a p ms

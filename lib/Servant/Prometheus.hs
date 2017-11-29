@@ -97,12 +97,12 @@ makeMeters proxy metersRecordQuants = do
         pure (path,m)
     pure $ H.fromList ms
 
-monitorEndpoints
+monitorServant
     :: HasEndpoints api
     => Proxy api
     -> H.HashMap Text Meters
     -> Middleware
-monitorEndpoints proxy ms application = \request respond -> do
+monitorServant proxy ms application = \request respond -> do
     let path = case getEndpoint proxy request of
             Nothing -> "unknown"
             Just (ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method]

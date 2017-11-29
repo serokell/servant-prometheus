@@ -26,7 +26,7 @@ servantPrometheusServer :: MeasureQuantiles -> IO Application
 servantPrometheusServer qants = do
   unregisterAll
   ms <- makeMeters benchApi qants
-  return $ monitorEndpoints benchApi ms (serve benchApi server)
+  return $ monitorServant benchApi ms (serve benchApi server)
 
 benchApp :: IO Application -> IO ()
 benchApp app = withApplication app $ \port ->
@@ -36,7 +36,7 @@ main :: IO ()
 main = do
   putStrLn "Benchmarking servant-prometheus (no quantiles)"
   benchApp (servantPrometheusServer NoQuantiles)
-  putStrLn "Benchmarking servant-prometheus (with quantiles)"
+  putStrLn "\nBenchmarking servant-prometheus (with quantiles)"
   benchApp (servantPrometheusServer WithQuantiles)
-  putStrLn "Benchmarking without servant-prometheus"
+  putStrLn "\nBenchmarking without servant-prometheus"
   benchApp . return $ serve benchApi server
