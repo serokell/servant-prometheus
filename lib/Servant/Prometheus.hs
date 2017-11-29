@@ -48,7 +48,7 @@ countResponseCodes codes application request respond =
         | 500 <= sc && sc < 600 = withLabel "5XX" incCounter codes
         | otherwise             = withLabel "XXX" incCounter codes
 
-responseTimeDistribution :: MeasureQantiles -> Metric Histogram -> Metric Summary -> Middleware
+responseTimeDistribution :: MeasureQuantiles -> Metric Histogram -> Metric Summary -> Middleware
 responseTimeDistribution qants hist qant application request respond =
     bracket getCurrentTime stop $ const $ application request respond
   where
@@ -58,8 +58,8 @@ responseTimeDistribution qants hist qant application request respond =
             t = fromRational $ (*1000) $ toRational dt
         observe t hist
         case qants of
-            WithQantiles -> observe t qant
-            NoQantiles   -> pure ()
+            WithQuantiles -> observe t qant
+            NoQuantiles   -> pure ()
 
 data Meters = Meters
     { metersInflight  :: Metric Gauge
@@ -68,10 +68,10 @@ data Meters = Meters
     , metersTimeQant  :: Metric Summary
     }
 
--- | Measuring qantiles can add significant overgead to your application if your
+-- | Measuring quantiles can add significant overgead to your application if your
 -- requests are often small. You should benchmark your app with and without
--- qantiles to decide if the overhead is acceptable for you application.
-data MeasureQantiles = WithQantiles | NoQantiles deriving (Show, Eq)
+-- quantiles to decide if the overhead is acceptable for you application.
+data MeasureQuantiles = WithQuantiles | NoQuantiles deriving (Show, Eq)
 
 monitorEndpoints
     :: HasEndpoint api
