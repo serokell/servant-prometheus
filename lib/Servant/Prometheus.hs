@@ -12,19 +12,20 @@ module Servant.Prometheus where
 
 import           Control.Exception
 import           Control.Monad
-import qualified Data.HashMap.Strict as H
+import           Data.ByteString.Lazy (fromStrict)
+import qualified Data.HashMap.Strict  as H
 import           Data.Monoid
 import           Data.Proxy
-import           Data.Text           (Text)
-import qualified Data.Text           as T
-import qualified Data.Text.Encoding  as T
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import qualified Data.Text.Encoding   as T
 import           Data.Time.Clock
 import           GHC.TypeLits
-import           Network.HTTP.Types  (Method, Status (..))
+import           Network.HTTP.Types   (Method, Status (..))
 import           Network.Wai
 import           Servant.API
 
-import           Prometheus          as Prom
+import           Prometheus           as Prom
 
 
 gaugeInflight :: Metric Gauge -> Middleware
@@ -113,6 +114,16 @@ monitorServant proxy ms application = \request respond -> do
             gaugeInflight metersInflight $
             application
     application' request respond
+
+-- | An application which will always return prometheus metrics with status 200.
+-- This can be added to a Servant API using the RAW type, or may be run in a
+-- second webserver on a different port to keep metrics reporting separate from
+-- your application.
+servePrometheusMetrics :: Application
+servePrometheusMetrics = \_req respond ->
+    respond . responseLBS 200 [] . fromStrict =<< exportMetricsAsText
+
+
 
 class HasEndpoints a where
     getEndpoints :: Proxy a -> [([Text], Method)]
