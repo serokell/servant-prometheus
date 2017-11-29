@@ -2,7 +2,9 @@
 
 Servant-prometheus allows you to record metrics about your servant applications on a per endpoint basis. It uses the information contained in the API's type to produce counters for all endpoints, and adds very little overhead (the included benchmarks show the benchmarked app can sustain 40k req/sec with monitoring, and 41k ewithout, when quantiles are not measured).
 
-In the example below, run time system metrics are also reported on using the [`prometheus-metrics-ghc package`](https://hackage.haskell.org/package/prometheus-metrics-ghc) package. If using GHC metrics, make sure that your app is run with `+RTS -T` to allow your application to have access to the runtime stats
+In the example below, run time system metrics are also reported on using the [prometheus-metrics-ghc](https://hackage.haskell.org/package/prometheus-metrics-ghc) package. If using GHC metrics, make sure that your app is run with `+RTS -T` to allow your application to have access to the runtime stats.
+
+The library is based on the [servant-ekg](https://hackage.haskell.org/package/servant-ekg) package, but differs in its preallocation of all meters at app launch, to avoid contention between all endpoint waiting on a single MVar. Due to the design of `prometheus-client`, there is still contention between threads responding to the same endpoint but the overhead is minimal, except in the case of Quantiles (Summaries in prometheus-client terminology), [see note below](#a-note-on-quantiles).
 
 ## Example
 
