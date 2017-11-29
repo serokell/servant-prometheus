@@ -13,7 +13,6 @@ module Servant.Prometheus where
 import           Control.Exception
 import           Control.Monad
 import qualified Data.HashMap.Strict as H
-import           Data.IORef
 import           Data.Monoid
 import           Data.Proxy
 import           Data.Text           (Text)
@@ -62,10 +61,11 @@ responseTimeDistribution qants hist qant application request respond =
             NoQuantiles   -> pure ()
 
 data Meters = Meters
-    { metersInflight  :: Metric Gauge
-    , metersResponses :: Metric (Vector Label1 Counter)
-    , metersTime      :: Metric Histogram
-    , metersTimeQant  :: Metric Summary
+    { metersInflight     :: Metric Gauge
+    , metersResponses    :: Metric (Vector Label1 Counter)
+    , metersTime         :: Metric Histogram
+    , metersTimeQant     :: Metric Summary
+    , metersRecordQuants :: MeasureQuantiles
     }
 
 -- | Measuring quantiles can add significant overgead to your application if your
@@ -73,61 +73,63 @@ data Meters = Meters
 -- quantiles to decide if the overhead is acceptable for you application.
 data MeasureQuantiles = WithQuantiles | NoQuantiles deriving (Show, Eq)
 
+
+makeMeters :: HasEndpoints api => Proxy api -> MeasureQuantiles -> IO (H.HashMap Text Meters)
+makeMeters proxy metersRecordQuants = do
+    let eps = "unknown" : map (\(ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method])
+                              (getEndpoints proxy)
+    ms <- forM eps $ \path -> do
+        let prefix = "servant.path." <> path <> "."
+            info :: Text -> Text -> Text -> Info
+            info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
+        metersInflight <- gauge $ info prefix  "in_flight" "Number of in flight requests for "
+        metersResponses <- vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
+        metersTime     <- histogram (info prefix "time_ms" "Distribution of query times for ")
+                                    [10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
+        metersTimeQant <- summary (info prefix "time_ms" "Summary of query times for ") defaultQuantiles
+        let m = Meters{..}
+        _ <- register metersInflight
+        _ <- register metersResponses
+        _ <- register metersTime
+        _ <- case metersRecordQuants of
+            NoQuantiles   -> pure metersTimeQant
+            WithQuantiles -> register metersTimeQant
+        pure (path,m)
+    pure $ H.fromList ms
+
 monitorEndpoints
-    :: HasEndpoint api
+    :: HasEndpoints api
     => Proxy api
-    -> MeasureQantiles
-    -> IORef (H.HashMap Text Meters)
+    -> H.HashMap Text Meters
     -> Middleware
-monitorEndpoints proxy qants meters application = \request respond -> do
+monitorEndpoints proxy ms application = \request respond -> do
     let path = case getEndpoint proxy request of
             Nothing -> "unknown"
             Just (ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method]
-    Meters{..} <- do
-        ms <- readIORef meters
-        case H.lookup path ms of
-            Just m -> pure m
-            Nothing -> do
-                let prefix = "servant.path." <> path <> "."
-                    info :: Text -> Text -> Text -> Info
-                    info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
-                metersInflight <- gauge $ info prefix  "in_flight" "Number of in flight requests for "
-                metersResponses <- vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
-                metersTime     <- histogram (info prefix "time_ms" "Distribution of query times for ")
-                                            [10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
-                metersTimeQant <- summary (info prefix "time_ms" "Summary of query times for ") defaultQuantiles
-                let m = Meters{..}
-                (ms,exists) <- atomicModifyIORef' meters $ \ms ->
-                    case H.lookup path ms of
-                        Nothing -> (H.insert path m ms,(m,False))
-                        Just m' -> (ms                ,(m',True))
-                if exists then pure ms
-                else do
-                   register metersInflight
-                   register metersResponses
-                   register metersTime
-                   case qants of
-                    NoQantiles   -> pure metersTimeQant
-                    WithQantiles -> register metersTimeQant
-                   pure ms
-
-    let application' =
-            responseTimeDistribution qants metersTime metersTimeQant .
+    let Meters{..} = ms H.! path
+        application' =
+            responseTimeDistribution metersRecordQuants metersTime metersTimeQant .
             countResponseCodes metersResponses .
             gaugeInflight metersInflight $
             application
     application' request respond
 
-class HasEndpoint a where
+class HasEndpoints a where
+    getEndpoints :: Proxy a -> [([Text], Method)]
     getEndpoint :: Proxy a -> Request -> Maybe ([Text], Method)
 
-instance (HasEndpoint (a :: *), HasEndpoint (b :: *)) => HasEndpoint (a :<|> b) where
+instance (HasEndpoints (a :: *), HasEndpoints (b :: *)) => HasEndpoints (a :<|> b) where
+    getEndpoints _ =
+        getEndpoints (Proxy :: Proxy a) ++ getEndpoints (Proxy :: Proxy b)
     getEndpoint _ req =
         getEndpoint (Proxy :: Proxy a) req `mplus`
         getEndpoint (Proxy :: Proxy b) req
 
-instance (KnownSymbol (path :: Symbol), HasEndpoint (sub :: *))
-    => HasEndpoint (path :> sub) where
+instance (KnownSymbol (path :: Symbol), HasEndpoints (sub :: *))
+    => HasEndpoints (path :> sub) where
+    getEndpoints _ = do
+        (end, method) <- getEndpoints (Proxy :: Proxy sub)
+        return (T.pack (symbolVal (Proxy :: Proxy path)):end, method)
     getEndpoint _ req =
         case pathInfo req of
             p:ps | p == T.pack (symbolVal (Proxy :: Proxy path)) -> do
@@ -135,8 +137,12 @@ instance (KnownSymbol (path :: Symbol), HasEndpoint (sub :: *))
                 return (p:end, method)
             _ -> Nothing
 
-instance (KnownSymbol (capture :: Symbol), HasEndpoint (sub :: *))
-    => HasEndpoint (Capture capture a :> sub) where
+instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
+    => HasEndpoints (Capture capture a :> sub) where
+    getEndpoints _ = do
+        (end, method) <- getEndpoints (Proxy :: Proxy sub)
+        let p = T.pack $ (':':) $ symbolVal (Proxy :: Proxy capture)
+        return (p:end, method)
     getEndpoint _ req =
         case pathInfo req of
             _:ps -> do
@@ -145,49 +151,63 @@ instance (KnownSymbol (capture :: Symbol), HasEndpoint (sub :: *))
                 return (p:end, method)
             _ -> Nothing
 
-instance HasEndpoint (sub :: *) => HasEndpoint (Header h a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (Header h a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (QueryParam (h :: Symbol) a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (QueryParam (h :: Symbol) a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (QueryParams (h :: Symbol) a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (QueryParams (h :: Symbol) a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (QueryFlag h :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (QueryFlag h :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (ReqBody cts a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (ReqBody cts a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (RemoteHost :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (RemoteHost :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (IsSecure :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (IsSecure :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (HttpVersion :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (HttpVersion :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (Vault :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (Vault :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoint (sub :: *) => HasEndpoint (WithNamedContext x y sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (WithNamedContext x y sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance ReflectMethod method => HasEndpoint (Verb method status cts a) where
+instance ReflectMethod method => HasEndpoints (Verb method status cts a) where
+    getEndpoints _ = [([], method)]
+      where method = reflectMethod (Proxy :: Proxy method)
     getEndpoint _ req = case pathInfo req of
         [] | requestMethod req == method -> Just ([], method)
         _  -> Nothing
       where method = reflectMethod (Proxy :: Proxy method)
-
-instance HasEndpoint Raw where
+instance HasEndpoints Raw where
+    getEndpoints _ = pure ([],"RAW")
     getEndpoint _ _ = Just ([],"RAW")
 
-instance HasEndpoint EmptyAPI where
+instance HasEndpoints EmptyAPI where
+    getEndpoints _ = pure ([],"EmptyAPI")
     getEndpoint _ _ = Just ([],"EmptyAPI")
 
 #if MIN_VERSION_servant(0,8,1)
-instance HasEndpoint (sub :: *) => HasEndpoint (CaptureAll (h :: Symbol) a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (CaptureAll (h :: Symbol) a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 #endif
