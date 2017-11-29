@@ -58,6 +58,7 @@ executable bench
                     , aeson
                     , servant-prometheus
                     , servant-server
+                    , prometheus-client
                     , text
                     , wai
                     , warp >= 3.2.4 && < 3.3
