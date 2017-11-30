@@ -21,7 +21,7 @@ import qualified Data.Text            as T
 import qualified Data.Text.Encoding   as T
 import           Data.Time.Clock
 import           GHC.TypeLits
-import           Network.HTTP.Types   (Method, Status (..))
+import           Network.HTTP.Types   (Method, Status (..), status200)
 import           Network.Wai
 import           Servant.API
 
@@ -121,7 +121,7 @@ monitorServant proxy ms application = \request respond -> do
 -- your application.
 servePrometheusMetrics :: Application
 servePrometheusMetrics = \_req respond ->
-    respond . responseLBS 200 [] . fromStrict =<< exportMetricsAsText
+    respond . responseLBS status200 [] . fromStrict =<< exportMetricsAsText
 
 
 
