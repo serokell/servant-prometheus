@@ -1,6 +1,6 @@
 # servant-prometheus
 
-Servant-prometheus allows you to record metrics about your servant applications on a per endpoint basis. It uses the information contained in the API's type to produce counters for all endpoints, and adds very little overhead (the included benchmarks show the benchmarked app can sustain 40k req/sec with monitoring, and 41k ewithout, when quantiles are not measured).
+Servant-prometheus allows you to record metrics about your servant applications on a per endpoint basis. It uses the information contained in the API's type to produce counters for all endpoints, and adds very little overhead (the included benchmarks show the benchmarked app can sustain 40k req/sec with monitoring, and 41k without, when quantiles are not measured).
 
 In the example below, run time system metrics are also reported on using the [prometheus-metrics-ghc](https://hackage.haskell.org/package/prometheus-metrics-ghc) package. If using GHC metrics, make sure that your app is run with `+RTS -T` to allow your application to have access to the runtime stats.
 
@@ -92,7 +92,7 @@ Requests/sec:  41322.76
 Transfer/sec:      6.77MB
 ```
 
-It is possible to decide on an endpoint-by-endpoint basis whether qantiles are enabled - run `makeMeters` with `NoQuantiles` and then for eahc endpoint you with to mesture, set its `metersRecordQuants` field to `WithQuantiles`, and register the quantiles metric with Prometheus:
+It is possible to decide on an endpoint-by-endpoint basis whether qantiles are enabled - run `makeMeters` with `NoQuantiles` and then for each endpoint you with to mesture, set its `metersRecordQuants` field to `WithQuantiles`, and register the quantiles metric with Prometheus:
 
 ```haskell
 
@@ -105,7 +105,7 @@ main = do
           register (metersTimeQant m)
           pure (H.insert ep m{metersRecordQuants=WithQuantiles} mp)
 
-  meters' <- foldM enableQuantile meters meters 
+  meters' <- foldM enableQuantile meters meters
                 ["servant.path.expensive.:ID.GET"
                 ,"servant.path.veryexpensive.:ID.POST"]
   ...
