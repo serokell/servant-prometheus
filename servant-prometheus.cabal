@@ -27,6 +27,7 @@ library
                      , time
                      , unordered-containers
                      , wai
+                     , bytestring
   default-language:    Haskell2010
 
 test-suite spec
