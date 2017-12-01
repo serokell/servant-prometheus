@@ -69,7 +69,7 @@ data Meters = Meters
     , metersRecordQuants :: MeasureQuantiles
     }
 
--- | Measuring quantiles can add significant overgead to your application if your
+-- | Measuring quantiles can add significant overhead to your application if your
 -- requests are often small. You should benchmark your app with and without
 -- quantiles to decide if the overhead is acceptable for you application.
 data MeasureQuantiles = WithQuantiles | NoQuantiles deriving (Show, Eq)
