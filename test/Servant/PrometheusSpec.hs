@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -40,7 +41,12 @@ spec = describe "servant-prometheus" $ do
           withApp q $ \port m -> do
             mgr <- newManager defaultManagerSettings
             let runFn :: ClientM a -> IO (Either ServantError a)
-                runFn fn = runClientM fn $ ClientEnv mgr (BaseUrl Http "localhost" port "")
+#if MIN_VERSION_servant_client(0,13,0)
+                env = ClientEnv mgr (BaseUrl Http "localhost" port "") Nothing
+#else
+                env = ClientEnv mgr (BaseUrl Http "localhost" port "")
+#endif
+                runFn fn = runClientM fn env
             _ <- runFn $ getEp "name" Nothing
             _ <- runFn $ postEp (Greet "hi")
             _ <- runFn $ deleteEp "blah"

@@ -5,7 +5,7 @@ description:         Helpers for using prometheus with servant. Each endpoint ha
 license:             BSD3
 license-file:        LICENSE
 author:              Alex Mason <axman6@gmail.com>, Anchor Engineering <engineering@lists.anchor.net.au>, Servant Contributors
-maintainer:          Alex Mason <axman6@gmail.com>
+maintainer:          Alex Mason <axman6@gmail.com>, Jack Kelly <jack.kelly@data61.csiro.au>
 category:            System
 build-type:          Simple
 cabal-version:       >=1.10
@@ -19,9 +19,9 @@ source-repository HEAD
 library
   exposed-modules:     Servant.Prometheus
   hs-source-dirs:      lib
-  build-depends:       base >=4.7 && < 4.10
+  build-depends:       base >= 4.7 && < 4.11
                      , prometheus-client
-                     , servant > 0.10 && < 0.12
+                     , servant > 0.10 && < 0.14
                      , http-types
                      , text
                      , time

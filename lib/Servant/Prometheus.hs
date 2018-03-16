@@ -23,7 +23,7 @@ import           Data.Time.Clock
 import           GHC.TypeLits
 import           Network.HTTP.Types   (Method, Status (..), status200)
 import           Network.Wai
-import           Servant.API
+import           Servant.API          as Servant
 
 import           Prometheus           as Prom
 
@@ -48,7 +48,7 @@ countResponseCodes codes application request respond =
         | 500 <= sc && sc < 600 = withLabel "5XX" incCounter codes
         | otherwise             = withLabel "XXX" incCounter codes
 
-responseTimeDistribution :: MeasureQuantiles -> Metric Histogram -> Metric Summary -> Middleware
+responseTimeDistribution :: MeasureQuantiles -> Metric Histogram -> Metric Prom.Summary -> Middleware
 responseTimeDistribution qants hist qant application request respond =
     bracket getCurrentTime stop $ const $ application request respond
   where
@@ -65,7 +65,7 @@ data Meters = Meters
     { metersInflight     :: Metric Gauge
     , metersResponses    :: Metric (Vector Label1 Counter)
     , metersTime         :: Metric Histogram
-    , metersTimeQant     :: Metric Summary
+    , metersTimeQant     :: Metric Prom.Summary
     , metersRecordQuants :: MeasureQuantiles
     }
 
@@ -148,8 +148,21 @@ instance (KnownSymbol (path :: Symbol), HasEndpoints (sub :: *))
                 return (p:end, method)
             _ -> Nothing
 
+
+#if MIN_VERSION_servant(0,13,0)
+#define CAPTURE Capture' mods
+#define HEADER Header' mods
+#define QUERY_PARAM QueryParam' mods
+#define REQ_BODY ReqBody' mods
+#else
+#define CAPTURE Capture
+#define HEADER Header
+#define QUERY_PARAM QueryParam
+#define REQ_BODY ReqBody
+#endif
+
 instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
-    => HasEndpoints (Capture capture a :> sub) where
+    => HasEndpoints (CAPTURE capture a :> sub) where
     getEndpoints _ = do
         (end, method) <- getEndpoints (Proxy :: Proxy sub)
         let p = T.pack $ (':':) $ symbolVal (Proxy :: Proxy capture)
@@ -162,11 +175,11 @@ instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
                 return (p:end, method)
             _ -> Nothing
 
-instance HasEndpoints (sub :: *) => HasEndpoints (Header h a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (HEADER h a :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoints (sub :: *) => HasEndpoints (QueryParam (h :: Symbol) a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (QUERY_PARAM (h :: Symbol) a :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
@@ -178,7 +191,7 @@ instance HasEndpoints (sub :: *) => HasEndpoints (QueryFlag h :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
-instance HasEndpoints (sub :: *) => HasEndpoints (ReqBody cts a :> sub) where
+instance HasEndpoints (sub :: *) => HasEndpoints (REQ_BODY cts a :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
@@ -219,6 +232,16 @@ instance HasEndpoints EmptyAPI where
 
 #if MIN_VERSION_servant(0,8,1)
 instance HasEndpoints (sub :: *) => HasEndpoints (CaptureAll (h :: Symbol) a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
+    getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
+#endif
+
+#if MIN_VERSION_servant(0,13,0)
+instance HasEndpoints (sub :: *) => HasEndpoints (Servant.Description s :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
+    getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
+
+instance HasEndpoints (sub :: *) => HasEndpoints (Servant.Summary s :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 #endif
