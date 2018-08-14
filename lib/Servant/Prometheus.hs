@@ -175,6 +175,14 @@ instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
                 return (p:end, method)
             _ -> Nothing
 
+instance HasEndpoints (sub :: *) => HasEndpoints (AuthProtect t :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
+    getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
+
+instance HasEndpoints (sub :: *) => HasEndpoints (BasicAuth r a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
+    getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
+
 instance HasEndpoints (sub :: *) => HasEndpoints (HEADER h a :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
     getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
