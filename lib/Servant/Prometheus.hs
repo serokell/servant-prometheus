@@ -28,7 +28,7 @@ import           Servant.API          as Servant
 import           Prometheus           as Prom
 
 
-gaugeInflight :: Metric Gauge -> Middleware
+gaugeInflight :: Gauge -> Middleware
 gaugeInflight inflight application request respond =
     bracket_ (incGauge inflight)
              (decGauge inflight)
@@ -36,36 +36,37 @@ gaugeInflight inflight application request respond =
 
 -- | Count responses with 2XX, 4XX, 5XX, and XXX response codes.
 countResponseCodes
-    :: Metric (Vector Label1 Counter)
+    :: Vector Label1 Counter
     -> Middleware
 countResponseCodes codes application request respond =
     application request respond'
   where
     respond' res = count (responseStatus res) >> respond res
     count Status{statusCode = sc }
-        | 200 <= sc && sc < 300 = withLabel "2XX" incCounter codes
-        | 400 <= sc && sc < 500 = withLabel "4XX" incCounter codes
-        | 500 <= sc && sc < 600 = withLabel "5XX" incCounter codes
-        | otherwise             = withLabel "XXX" incCounter codes
+        | 200 <= sc && sc < 300 = withLabel codes "2XX" incCounter
+        | 400 <= sc && sc < 500 = withLabel codes "4XX" incCounter
+        | 500 <= sc && sc < 600 = withLabel codes "5XX" incCounter
+        | otherwise             = withLabel codes "XXX" incCounter
 
-responseTimeDistribution :: MeasureQuantiles -> Metric Histogram -> Metric Prom.Summary -> Middleware
-responseTimeDistribution qants hist qant application request respond =
+responseTimeDistribution :: MeasureQuantiles -> Histogram -> Maybe Prom.Summary -> Middleware
+responseTimeDistribution _qants _hist Nothing application request respond = application request respond
+responseTimeDistribution qants hist (Just qant) application request respond =
     bracket getCurrentTime stop $ const $ application request respond
   where
     stop t1 = do
         t2 <- getCurrentTime
         let dt = diffUTCTime t2 t1
             t = fromRational $ (*1000) $ toRational dt
-        observe t hist
+        observe hist t
         case qants of
-            WithQuantiles -> observe t qant
+            WithQuantiles -> observe qant t
             NoQuantiles   -> pure ()
 
 data Meters = Meters
-    { metersInflight     :: Metric Gauge
-    , metersResponses    :: Metric (Vector Label1 Counter)
-    , metersTime         :: Metric Histogram
-    , metersTimeQant     :: Metric Prom.Summary
+    { metersInflight     :: Gauge
+    , metersResponses    :: Vector Label1 Counter
+    , metersTime         :: Histogram
+    , metersTimeQant     :: Maybe Prom.Summary
     , metersRecordQuants :: MeasureQuantiles
     }
 
@@ -82,20 +83,20 @@ makeMeters proxy metersRecordQuants = do
     ms <- forM eps $ \path -> do
         let prefix = "servant.path." <> path <> "."
             info :: Text -> Text -> Text -> Info
-            info prfx name help = Info (T.unpack $ prfx <> name) (T.unpack $ help <> prfx)
-        metersInflight <- gauge $ info prefix  "in_flight" "Number of in flight requests for "
-        metersResponses <- vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
-        metersTime     <- histogram (info prefix "time_ms" "Distribution of query times for ")
+            info prfx name help = Info (prfx <> name) (help <> prfx)
+        let mMetersInflight  = gauge $ info prefix  "in_flight" "Number of in flight requests for "
+            mMetersResponses = vector "status_code" $ counter (info prefix "http_status" "Counters for status codes")
+            mMetersTime      = histogram (info prefix "time_ms" "Distribution of query times for ")
                                     [10,50,100,150,200,300,500,1000,1500,2500,5000,7000,10000,50000]
-        metersTimeQant <- summary (info prefix "time_ms" "Summary of query times for ") defaultQuantiles
-        let m = Meters{..}
-        _ <- register metersInflight
-        _ <- register metersResponses
-        _ <- register metersTime
-        _ <- case metersRecordQuants of
-            NoQuantiles   -> pure metersTimeQant
-            WithQuantiles -> register metersTimeQant
-        pure (path,m)
+            mMetersTimeQant  = summary (info prefix "time_ms" "Summary of query times for ") defaultQuantiles
+
+        metersInflight <- register mMetersInflight
+        metersResponses <- register mMetersResponses
+        metersTime <- register mMetersTime
+        metersTimeQant <- case metersRecordQuants of
+            NoQuantiles   -> pure Nothing
+            WithQuantiles -> Just <$> register mMetersTimeQant
+        pure (path, Meters{..})
     pure $ H.fromList ms
 
 monitorServant
@@ -121,7 +122,7 @@ monitorServant proxy ms application = \request respond -> do
 -- your application.
 servePrometheusMetrics :: Application
 servePrometheusMetrics = \_req respond ->
-    respond . responseLBS status200 [] . fromStrict =<< exportMetricsAsText
+    respond . responseLBS status200 [] =<< exportMetricsAsText
 
 
 
