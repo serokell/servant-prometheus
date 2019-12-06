@@ -9,11 +9,12 @@ The library is based on the [servant-ekg](https://hackage.haskell.org/package/se
 ## Example
 
 ```haskell
-import Servant.Prometheus
-import Servant (serve)
 import Network.Wai.Handler.Warp (run)
-import Prometheus.Metric.GHC (ghcMetrics)
 import Prometheus (register)
+import Prometheus.Metric.GHC (ghcMetrics)
+import Servant (serve)
+
+import qualified Servant.Prometheus as SP
 ...
 
 appAPi :: Proxy AppAPI
@@ -25,13 +26,13 @@ app = ...
 
 main = do
   register ghcMetrics
+  -- Allocate the counters necessary for all app endpoints.
+  meters <- register $ SP.meters appApi
   -- Fork a separate server for serving nothing but metrics,
   -- which you will point Prometheus at.
   forkIO $ run monitoringPort servePrometheusMetrics
-  -- Allocate the counters necessary for all app endpoints.
-  meters <- makeMeters appApi NoQuantiles
   -- Run your app with metric monitoring.
-  run port $ monitorServant appApi meters $ serve appApi app
+  run port $ SP.monitorServant meters $ serve appApi app
 
 ```
 
@@ -90,24 +91,4 @@ Running 20s test @ http://localhost:52841
   Socket errors: connect 0, read 45, write 12, timeout 0
 Requests/sec:  41322.76
 Transfer/sec:      6.77MB
-```
-
-It is possible to decide on an endpoint-by-endpoint basis whether qantiles are enabled - run `makeMeters` with `NoQuantiles` and then for each endpoint you with to mesture, set its `metersRecordQuants` field to `WithQuantiles`, and register the quantiles metric with Prometheus:
-
-```haskell
-
-main = do
-  meters <- makeMeters appApi NoQuantiles
-  let enableQantile :: HashMap Text Meters -> Text -> IO HashMap Text Meters
-      enableQuantil mp ep = case H.lookup ep hm of
-        Nothing -> fail $ "Unknown endpoint: " ++ show ep
-        Just m -> do
-          register (metersTimeQant m)
-          pure (H.insert ep m{metersRecordQuants=WithQuantiles} mp)
-
-  meters' <- foldM enableQuantile meters meters
-                ["servant.path.expensive.:ID.GET"
-                ,"servant.path.veryexpensive.:ID.POST"]
-  ...
-
 ```

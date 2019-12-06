@@ -1,5 +1,5 @@
 name:                servant-prometheus
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            Helpers for using prometheus with servant
 description:         Helpers for using prometheus with servant. Each endpoint has its own metrics allowing more detailed monitoring than wai-middleware-prometheus allows
 license:             BSD3
@@ -11,17 +11,24 @@ build-type:          Simple
 cabal-version:       >=1.10
 extra-source-files:
                     README.md
+                  , CHANGELOG.md
 
 source-repository HEAD
   type: git
   location: https://github.com/axman6/servant-prometheus
 
 library
-  exposed-modules:     Servant.Prometheus
   hs-source-dirs:      lib
-  build-depends:       base >= 4.7 && < 4.12
+  exposed-modules:     Servant.Prometheus
+  other-modules:       Servant.Prometheus.Internal.Core
+                     , Servant.Prometheus.Internal.Endpoints
+                     , Servant.Prometheus.Internal.Inflight
+                     , Servant.Prometheus.Internal.Middleware
+                     , Servant.Prometheus.Internal.Latency
+                     , Servant.Prometheus.Internal.StatusCodes
+  build-depends:       base >= 4.7 && < 4.15
                      , prometheus-client >= 1.0
-                     , servant > 0.10 && < 0.14
+                     , servant > 0.10 && < 0.17
                      , http-types
                      , text
                      , time
