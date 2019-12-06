@@ -78,10 +78,10 @@ data MeasureQuantiles = WithQuantiles | NoQuantiles deriving (Show, Eq)
 
 makeMeters :: HasEndpoints api => Proxy api -> MeasureQuantiles -> IO (H.HashMap Text Meters)
 makeMeters proxy metersRecordQuants = do
-    let eps = "unknown" : map (\(ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method])
+    let eps = "unknown" : map (\(ps,method) -> T.replace "-" "_" $ T.intercalate "_" $ ps <> [T.decodeUtf8 method])
                               (getEndpoints proxy)
     ms <- forM eps $ \path -> do
-        let prefix = "servant.path." <> path <> "."
+        let prefix = "servant_path_" <> path <> "_"
             info :: Text -> Text -> Text -> Info
             info prfx name help = Info (prfx <> name) (help <> prfx)
         let mMetersInflight  = gauge $ info prefix  "in_flight" "Number of in flight requests for "
@@ -107,7 +107,8 @@ monitorServant
 monitorServant proxy ms application = \request respond -> do
     let path = case getEndpoint proxy request of
             Nothing -> "unknown"
-            Just (ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method]
+            Just (ps,method) -> T.replace "-" "_" $
+              T.intercalate "_" $ ps <> [T.decodeUtf8 method]
     let Meters{..} = ms H.! path
         application' =
             responseTimeDistribution metersRecordQuants metersTime metersTimeQant .
@@ -166,13 +167,13 @@ instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
     => HasEndpoints (CAPTURE capture a :> sub) where
     getEndpoints _ = do
         (end, method) <- getEndpoints (Proxy :: Proxy sub)
-        let p = T.pack $ (':':) $ symbolVal (Proxy :: Proxy capture)
+        let p = T.pack $ symbolVal (Proxy :: Proxy capture)
         return (p:end, method)
     getEndpoint _ req =
         case pathInfo req of
             _:ps -> do
                 (end, method) <- getEndpoint (Proxy :: Proxy sub) req{ pathInfo = ps }
-                let p = T.pack $ (':':) $ symbolVal (Proxy :: Proxy capture)
+                let p = T.pack $ symbolVal (Proxy :: Proxy capture)
                 return (p:end, method)
             _ -> Nothing
 
