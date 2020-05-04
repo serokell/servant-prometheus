@@ -56,7 +56,7 @@ test-suite spec
                     , http-client
                     , text
                     , wai
-                    , warp >= 3.2.4 && < 3.3
+                    , warp >= 3.2.4 && < 3.4
                     , hspec == 2.*
                     , unordered-containers
                     , transformers
@@ -73,5 +73,5 @@ executable bench
                     , prometheus-client
                     , text
                     , wai
-                    , warp >= 3.2.4 && < 3.3
+                    , warp
                     , process
