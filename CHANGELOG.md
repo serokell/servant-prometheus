@@ -6,6 +6,7 @@
 * Latency summaries (quantiles computed on the client side) are temporary
   not available. Histograms (quntiles computer on the server side) are
   not affected.
+* New module: `Servant.Prometheus.Export`.
 
 ### Interface
 
@@ -66,6 +67,17 @@ from the Prometheus documentation][avoid-missing-metrics].
   configurable in a future version.
 * Summaries are temporary unavilable. They will be brought in a future
   version and will be configurable per-endpoint as before.
+
+### `Servant.Prometheus.Export`
+
+This new module containts utilities that allow you to easily export your app’s
+metrics through Servant.
+
+If you use `prometheus-client` to keep track of your metrics, your servant
+app has some API (let’s call it `yourApi`), and you have implemented a server
+for it, that is, you have `yourServer :: ServerT m yourApi`, you can just
+wrap `WithMetrics` around `yourApi` and `withMetrics yourApiProxy`
+around `yourServer` and get the `/metrics` endpoint handled for you.
 
 ### Internal changes
 

@@ -10,7 +10,8 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base bytestring http-types prometheus-client servant text time
+    base bytestring http-types prometheus-client servant
+    servant-server text time
     unordered-containers wai
   ];
   executableHaskellDepends = [

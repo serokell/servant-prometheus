@@ -20,6 +20,7 @@ source-repository HEAD
 library
   hs-source-dirs:      lib
   exposed-modules:     Servant.Prometheus
+                     , Servant.Prometheus.Export
   other-modules:       Servant.Prometheus.Internal.Core
                      , Servant.Prometheus.Internal.Endpoints
                      , Servant.Prometheus.Internal.Inflight
@@ -29,6 +30,7 @@ library
   build-depends:       base >= 4.7 && < 4.15
                      , prometheus-client >= 1.0
                      , servant > 0.10 && < 0.17
+                     , servant-server
                      , http-types
                      , text
                      , time
