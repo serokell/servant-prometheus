@@ -14,6 +14,7 @@ module Servant.Prometheus.Internal.Endpoints
   ) where
 
 import           Servant.API        as Servant
+import           Servant.Auth       (Auth)
 
 import           Control.Monad      (mplus)
 import           Data.Text          (Text)
@@ -83,6 +84,10 @@ instance (KnownSymbol (capture :: Symbol), HasEndpoints (sub :: *))
                 let p = T.pack . (':':) $ symbolVal (Proxy :: Proxy capture)
                 return (p:end, method)
             _ -> Nothing
+
+instance HasEndpoints (sub :: *) => HasEndpoints (Auth l a :> sub) where
+    getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
+    getEndpoint _ = getEndpoint (Proxy :: Proxy sub)
 
 instance HasEndpoints (sub :: *) => HasEndpoints (AuthProtect t :> sub) where
     getEndpoints _ = getEndpoints (Proxy :: Proxy sub)
