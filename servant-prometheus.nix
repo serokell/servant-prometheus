@@ -1,6 +1,6 @@
 { mkDerivation, aeson, base, bytestring, hspec, http-client
 , http-types, process, prometheus-client, servant, servant-client
-, servant-server, stdenv, text, time, transformers
+, servant-auth, servant-server, stdenv, text, time, transformers
 , unordered-containers, wai, warp
 }:
 mkDerivation {
@@ -11,7 +11,7 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     base bytestring http-types prometheus-client servant
-    servant-server text time
+    servant-auth servant-server text time
     unordered-containers wai
   ];
   executableHaskellDepends = [
