@@ -29,7 +29,7 @@ library
                      , Servant.Prometheus.Internal.StatusCodes
   build-depends:       base >= 4.7 && < 4.15
                      , prometheus-client >= 1.0
-                     , servant > 0.10 && < 0.17
+                     , servant > 0.10 && < 0.19
                      , servant-auth
                      , servant-server
                      , http-types
