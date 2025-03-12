@@ -27,9 +27,9 @@ library
                      , Servant.Prometheus.Internal.Middleware
                      , Servant.Prometheus.Internal.Latency
                      , Servant.Prometheus.Internal.StatusCodes
-  build-depends:       base >= 4.7 && < 4.15
+  build-depends:       base >= 4.7 && < 4.22
                      , prometheus-client >= 1.0
-                     , servant > 0.10 && < 0.19
+                     , servant > 0.10 && < 0.21
                      , servant-auth
                      , servant-server
                      , http-types
