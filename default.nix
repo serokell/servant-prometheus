@@ -7,6 +7,6 @@ let
                        then pkgs.haskellPackages
                        else pkgs.haskell.packages.${compiler};
 
-  servant-prometheus = haskellPackages.callPackage ./servant-prometheus.nix {};
+  servant-prometheus = haskellPackages.callCabal2nix "servant-prometheus" ./. {};
 in
   servant-prometheus
