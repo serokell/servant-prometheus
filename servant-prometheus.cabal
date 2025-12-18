@@ -57,7 +57,7 @@ test-suite spec
                     , http-client
                     , text
                     , wai
-                    , warp >= 3.2.4 && < 3.4
+                    , warp >= 3.2.4 && < 3.5
                     , hspec == 2.*
                     , unordered-containers
                     , transformers
